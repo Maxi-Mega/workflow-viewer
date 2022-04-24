@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
+import type { Ref } from "vue";
 import WorkflowBoard from "@/components/WorkflowBoard.vue";
+import { PrometheusData, useFetchPrometheus } from "@/composables/prometheus";
+import ErrorPopupItem from "@/components/ErrorItem.vue";
+import LoadingItem from "@/components/LoadingItem.vue";
 
 // new Date((Math.floor(Date.now()/100000000)*100000000)+(Math.round(Math.random()*1000000000))%100000000).toISOString()
 const sampleData = ref({
@@ -10,7 +14,11 @@ const sampleData = ref({
       end: "2022-03-26T02:35:40.244Z",
     },
     step2: {
-      start: "2022-03-27T16:13:40.244Z",
+      start: "2022-03-27T12:21:18.877Z",
+      end: "2022-03-27T16:16:40.244Z",
+    },
+    step3: {
+      start: "2022-03-28T09:50:11.884Z",
     },
   },
   identifier2: {
@@ -19,23 +27,38 @@ const sampleData = ref({
       end: "2022-03-27T15:53:08.769Z",
     },
     step4: {
-      start: "2022-03-27T06:16:25.574Z",
+      start: "2022-03-27T16:16:25.574Z",
+      end: "2022-03-27T18:58:38.567Z",
     },
   },
+});
+
+const { fetchData } = useFetchPrometheus();
+
+const loading = ref(true);
+const error = ref(false);
+const errors = ref(new Array<string>());
+const data: Ref<PrometheusData | null> = ref(null);
+
+onMounted(async () => {
+  // TODO: setInterval ...
+  const result = await fetchData(
+    new Date(Date.now() - 100_000_000),
+    new Date(),
+    "30m"
+  );
+  console.info("Result:", result);
+  loading.value = result.loading;
+  error.value = result.asErrors();
+  errors.value = result.errors;
+  data.value = result.data;
 });
 </script>
 
 <template>
-  <WorkflowBoard :workflow_data="sampleData" />
+  <LoadingItem v-if="loading" />
+  <ErrorPopupItem v-if="error" :errors="errors" />
+  <WorkflowBoard v-else :workflow_data="sampleData" />
 </template>
 
-<style scoped>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-}
-</style>
+<style scoped></style>
