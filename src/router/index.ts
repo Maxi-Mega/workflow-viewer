@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory } from "vue-router";
 import WorkflowView from "../components/WorkflowBoard.vue";
+import { getEnv } from "@/env";
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(getEnv().BASE_URL),
   routes: [
     {
       path: "/",

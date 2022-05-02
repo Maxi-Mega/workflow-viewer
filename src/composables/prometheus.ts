@@ -2,20 +2,30 @@ import { reactive } from "vue";
 import { getEnv } from "@/env";
 import axios from "axios";
 import type { AxiosResponse } from "axios";
+import { TimeoutError } from "@/errors/TimeoutError";
 
 const requestTimeout = 1000;
 
 async function parseResponse(
   response: AxiosResponse | Error
-): Promise<PrometheusResponseData | Error> {
+): Promise<PrometheusHalfData | Error> {
   if ((await response) instanceof Error) {
+    let isTimeout = false;
     if ("message" in response) {
       console.warn("Failed to fetch data:", response.message);
+      if (response.message.startsWith("timeout of")) {
+        isTimeout = true;
+      }
     } else {
       console.warn("Error while fetching data.");
     }
+    if (isTimeout) {
+      return new TimeoutError(
+        "Request failed, check the browser console for more informations."
+      );
+    }
     return new Error(
-      "Failed to fetch data, check the browser console for more informations."
+      "Request failed, check the browser console for more informations."
     );
   }
   // console.info("Response:", response);
@@ -24,13 +34,13 @@ async function parseResponse(
     console.warn("Failed to fetch data:", resp.statusText);
     return new Promise(() => {
       console.log("in promise");
-      new Error("Failed to fetch data: " + resp.statusText);
+      new Error("Request failed: " + resp.statusText);
     });
   }
   return resp.data;
 }
 
-async function doRequest(url: string): Promise<PrometheusResponseData | Error> {
+async function doRequest(url: string): Promise<PrometheusHalfData | Error> {
   const axiosResponse = await axios
     .get(url, { timeout: requestTimeout })
     .catch((reason) => new Error(reason));
@@ -40,43 +50,38 @@ async function doRequest(url: string): Promise<PrometheusResponseData | Error> {
 export function useFetchPrometheus() {
   let url = "/prometheus_target";
   url += url.endsWith("/") ? "api/v1/" : "/api/v1/";
-  url += "query_range?query=%time_event%&start=%start%&end=%end%&step=%step%";
+  url += "query?query=%time_event%&time=%time%";
 
   const env = getEnv();
 
   const state = reactive(new PrometheusFetch());
 
-  const fetchData = async function (
-    start: Date,
-    end: Date,
-    step: string
-  ): Promise<PrometheusFetch> {
+  const fetchData = async function (time: Date): Promise<PrometheusFetch> {
     state.loading = true;
-    const fetchUrl = url
-      .replace("%start%", start.toISOString())
-      .replace("%end%", end.toISOString())
-      .replace("%step%", step);
+    const fetchUrl = url.replace("%time%", String(time.getTime() / 1000));
     const startData = await doRequest(
       fetchUrl.replace("%time_event%", env.VITE_START_TIME_EVENT)
     );
     if (startData instanceof Error) {
-      state.errors.push("Failed to fetch start time data: " + startData);
+      state.errors.push(
+        "Failed to fetch start time data: " + startData.message
+      );
     } else {
-      console.info("Start data:", startData);
+      // console.info("Start data:", startData);
     }
     const endData = await doRequest(
       fetchUrl.replace("%time_event%", env.VITE_END_TIME_EVENT)
     );
     if (endData instanceof Error) {
-      state.errors.push("Failed to fetch end time data: " + endData);
+      state.errors.push("Failed to fetch end time data: " + endData.message);
     } else {
-      console.info("End data:", endData);
+      // console.info("End data:", endData);
     }
     if (state.errors.length === 0) {
       // No errors
       state.data = new PrometheusData(
-        startData as PrometheusResponseData,
-        endData as PrometheusResponseData
+        startData as PrometheusHalfData,
+        endData as PrometheusHalfData
       );
     }
 
@@ -106,13 +111,18 @@ class PrometheusFetch {
 }
 
 export class PrometheusData {
-  public readonly start: PrometheusResponseData;
-  public readonly end: PrometheusResponseData;
+  public readonly start: PrometheusHalfData;
+  public readonly end: PrometheusHalfData;
 
-  constructor(start: PrometheusResponseData, end: PrometheusResponseData) {
+  constructor(start: PrometheusHalfData, end: PrometheusHalfData) {
     this.start = start;
     this.end = end;
   }
+}
+
+class PrometheusHalfData {
+  public status: string | undefined;
+  public data: PrometheusResponseData | undefined;
 }
 
 class PrometheusResponseData {
@@ -122,7 +132,7 @@ class PrometheusResponseData {
 
 class PrometheusResult {
   public metric: PrometheusMetric | undefined;
-  public values: Array<Array<object>> | undefined; // [float, string]
+  public value: [number, string] | undefined; // [float, string]: only the string is the good value
 }
 
 class PrometheusMetric {

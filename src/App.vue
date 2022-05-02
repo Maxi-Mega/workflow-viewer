@@ -3,8 +3,9 @@ import { onMounted, ref } from "vue";
 import type { Ref } from "vue";
 import WorkflowBoard from "@/components/WorkflowBoard.vue";
 import { PrometheusData, useFetchPrometheus } from "@/composables/prometheus";
-import ErrorPopupItem from "@/components/ErrorItem.vue";
+import ErrorItem from "@/components/ErrorItem.vue";
 import LoadingItem from "@/components/LoadingItem.vue";
+import { getEnv } from "@/env";
 
 // new Date((Math.floor(Date.now()/100000000)*100000000)+(Math.round(Math.random()*1000000000))%100000000).toISOString()
 const sampleData = ref({
@@ -40,25 +41,31 @@ const error = ref(false);
 const errors = ref(new Array<string>());
 const data: Ref<PrometheusData | null> = ref(null);
 
-onMounted(async () => {
-  // TODO: setInterval ...
-  const result = await fetchData(
-    new Date(Date.now() - 100_000_000),
-    new Date(),
-    "30m"
-  );
-  console.info("Result:", result);
+async function setValues() {
+  console.info("Settings values ...");
+  const result = await fetchData(new Date(Date.now())); // 1h = 3600000
   loading.value = result.loading;
   error.value = result.asErrors();
   errors.value = result.errors;
   data.value = result.data;
-});
+}
+
+setInterval(
+  setValues,
+  Number(getEnv().VITE_INTERFACE_REFRESH_PERIOD_IN_SECONDS) * 1000
+);
+
+onMounted(setValues);
 </script>
 
 <template>
   <LoadingItem v-if="loading" />
-  <ErrorPopupItem v-if="error" :errors="errors" />
-  <WorkflowBoard v-else :workflow_data="sampleData" />
+  <ErrorItem
+    v-if="error"
+    :errors="errors"
+    :show-retry-button="!loading && error"
+  />
+  <WorkflowBoard v-else-if="!loading" :workflow_data="data" />
 </template>
 
 <style scoped></style>
